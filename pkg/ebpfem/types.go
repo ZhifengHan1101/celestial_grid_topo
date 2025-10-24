@@ -27,33 +27,6 @@ import (
 	"github.com/OpenFogStack/celestial/pkg/orchestrator"
 )
 
-// const (
-// 	DEFAULT_LATENCY_US     = 0
-// 	DEFAULT_BANDWIDTH_KBPS = 1_000_000
-
-// 	BLOCKED_LATENCY_US     = 1_000_000_000
-// 	BLOCKED_BANDWIDTH_KBPS = 0
-// )
-
-// type handleKbpsDelay struct {
-// 	throttleRateKbps uint32
-// 	delayUs          uint32
-// }
-
-// type vm struct {
-// 	netIf string
-
-// 	// ebpf specific
-// 	objs *edtObjects
-// 	hbd  map[string]*handleKbpsDelay
-
-// 	sync.Mutex
-// }
-
-// type EBPFem struct {
-// 	vms map[orchestrator.MachineID]*vm
-// 	sync.RWMutex
-// }
 
 const (
 	DEFAULT_LATENCY_US     = 0
