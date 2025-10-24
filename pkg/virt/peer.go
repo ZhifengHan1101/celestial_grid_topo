@@ -19,6 +19,20 @@ package virt
 
 import "github.com/OpenFogStack/celestial/pkg/orchestrator"
 
-func (v *Virt) route(m *machine, host orchestrator.Host) error {
-	return v.pb.Route(m.network.network, host)
+// func (v *Virt) route(m *machine, host orchestrator.Host) error {
+// 	return v.pb.Route(m.network.network, host)
+// }
+
+// routePort 为指定端口设置到远程主机的路由
+func (v *Virt) routePort(m *machine, port int, host orchestrator.Host) error {
+	if port < 0 || port >= NUM_PORTS {
+		return nil
+	}
+	
+	// 只有已连接的端口才需要路由
+	if !m.networks[port].connected {
+		return nil
+	}
+	
+	return v.pb.RoutePort(m.networks[port].linkNetwork, port, host)
 }

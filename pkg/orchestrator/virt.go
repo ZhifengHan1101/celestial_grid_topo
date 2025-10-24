@@ -19,15 +19,39 @@ package orchestrator
 
 import "net"
 
+// type VirtualizationBackend interface {
+// 	RegisterMachine(machine MachineID, name string, host Host, config MachineConfig) error
+// 	BlockLink(source MachineID, target MachineID) error
+// 	UnblockLink(source MachineID, target MachineID) error
+// 	SetLatency(source MachineID, target MachineID, latency uint32) error
+// 	SetBandwidth(source MachineID, target MachineID, bandwidth uint64) error
+// 	StopMachine(machine MachineID) error
+// 	StartMachine(machine MachineID) error
+// 	GetIPAddress(id MachineID) (net.IPNet, error)
+// 	ResolveIPAddress(ip net.IP) (MachineID, error)
+// 	Stop() error
+// }
+
 type VirtualizationBackend interface {
+	// 机器管理
 	RegisterMachine(machine MachineID, name string, host Host, config MachineConfig) error
+	StopMachine(machine MachineID) error
+	StartMachine(machine MachineID) error
+	
+	// 链接管理（新增）
+	EstablishLink(source MachineID, sourcePort int, target MachineID, targetPort int, linkIdx uint32) error
+	TeardownLink(source MachineID, sourcePort int) error
+	
+	// 网络仿真（保留用于向后兼容）
 	BlockLink(source MachineID, target MachineID) error
 	UnblockLink(source MachineID, target MachineID) error
 	SetLatency(source MachineID, target MachineID, latency uint32) error
 	SetBandwidth(source MachineID, target MachineID, bandwidth uint64) error
-	StopMachine(machine MachineID) error
-	StartMachine(machine MachineID) error
+	
+	// IP地址管理
 	GetIPAddress(id MachineID) (net.IPNet, error)
 	ResolveIPAddress(ip net.IP) (MachineID, error)
+	
+	// 清理
 	Stop() error
 }

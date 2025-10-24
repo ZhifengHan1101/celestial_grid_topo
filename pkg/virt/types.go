@@ -36,9 +36,11 @@ const (
 )
 
 const HOST_INTERFACE = "ens4"
-const GUESTINTERFACE = "eth0"
+//const GUESTINTERFACE = "eth0"
+const GUESTINTERFACE_PREFIX = "eth"
 const ROOTPATH = "/celestial"
 const OUTPUTPATH = "/celestial/out"
+const NUM_PORTS = 4
 
 var (
 	IPTABLES_BIN string
@@ -50,10 +52,28 @@ var (
 
 type network struct {
 	ip      net.IPNet
-	gateway net.IPNet
-	network net.IPNet
+	peerIP	net.IP
+//	gateway net.IPNet
+//	network net.IPNet
+	linkNetwork net.IPNet
 	mac     net.HardwareAddr
 	tap     string
+	connected Bool
+	linkIdx uint32
+}
+
+type PortConnection struct {
+	// 连接到的对端机器
+	peerMachineID orchestrator.MachineID
+	
+	// 对端使用的端口号
+	peerPort int
+	
+	// 链接索引
+	linkIdx uint32
+	
+	// 是否为链接的"第一端"（用于确定IP分配）
+	isFirstEnd bool
 }
 
 type machine struct {
@@ -68,9 +88,14 @@ type machine struct {
 	kernel     string
 	bootparams []string
 
-	network network
+	//network network
+	networks [NUM_PORTS]network
+
+	portConnections [NUM_PORTS]*PortConnection
 
 	vm *firecracker.Machine
+
+	sync.Mutex
 }
 
 // Virt provides virtualization functionality using firecracker.
@@ -87,16 +112,27 @@ type Virt struct {
 // PeeringBackend is the interface for the peering backend.
 type PeeringBackend interface {
 	GetHostID() (uint8, error)
-	Route(network net.IPNet, host orchestrator.Host) error
+	//Route(network net.IPNet, host orchestrator.Host) error
+	RoutePort(network net.IPNet, port int, host orchestrator.Host) error
 	Stop() error
 }
 
 // NetworkEmulationBackend is the interface for the network emulation backend.
 type NetworkEmulationBackend interface {
-	Register(id orchestrator.MachineID, tap string) error
-	SetBandwidth(source orchestrator.MachineID, target net.IPNet, bandwidth uint64) error
-	SetLatency(source orchestrator.MachineID, target net.IPNet, latency uint32) error
-	UnblockLink(source orchestrator.MachineID, target net.IPNet) error
-	BlockLink(source orchestrator.MachineID, target net.IPNet) error
+	// Register(id orchestrator.MachineID, tap string) error
+	// SetBandwidth(source orchestrator.MachineID, target net.IPNet, bandwidth uint64) error
+	// SetLatency(source orchestrator.MachineID, target net.IPNet, latency uint32) error
+	// UnblockLink(source orchestrator.MachineID, target net.IPNet) error
+	// BlockLink(source orchestrator.MachineID, target net.IPNet) error
+
+	// Register now includes port number
+	RegisterPort(id orchestrator.MachineID, port int, tap string) error
+	
+	// Network operations now target specific ports
+	SetBandwidthPort(source orchestrator.MachineID, sourcePort int, target net.IPNet, bandwidth uint64) error
+	SetLatencyPort(source orchestrator.MachineID, sourcePort int, target net.IPNet, latency uint32) error
+	UnblockLinkPort(source orchestrator.MachineID, sourcePort int, target net.IPNet) error
+	BlockLinkPort(source orchestrator.MachineID, sourcePort int, target net.IPNet) error
+	
 	Stop() error
 }

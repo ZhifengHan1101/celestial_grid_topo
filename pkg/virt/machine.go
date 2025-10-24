@@ -38,101 +38,362 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	// Thank you Firecracker for having to set this with an env variable
-	err := os.Setenv("FIRECRACKER_GO_SDK_REQUEST_TIMEOUT_MILLISECONDS", "10000")
-	if err != nil {
-		panic(err)
-	}
+// func init() {
+// 	// Thank you Firecracker for having to set this with an env variable
+// 	err := os.Setenv("FIRECRACKER_GO_SDK_REQUEST_TIMEOUT_MILLISECONDS", "10000")
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-	err = os.Setenv("FIRECRACKER_GO_SDK_INIT_TIMEOUT_SECONDS", "5")
-	if err != nil {
-		panic(err)
-	}
-}
+// 	err = os.Setenv("FIRECRACKER_GO_SDK_INIT_TIMEOUT_SECONDS", "5")
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
+// func (m *machine) createNetwork() error {
+// 	log.Tracef("creating network for %s", m.network.ip.String())
+// 	// remove old network tap if exists
+// 	// don't care about errors here
+// 	_ = removeNetworkDevice(m.network.tap, HOST_INTERFACE)
+
+// 	// create new network tap
+// 	err := createNetworkDevice(m.network.gateway, m.network.tap, HOST_INTERFACE)
+
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
+// func (m *machine) removeNetwork() error {
+// 	// remove old network tap if exists
+// 	// don't care about errors here
+// 	_ = removeNetworkDevice(m.network.tap, HOST_INTERFACE)
+
+// 	return nil
+// }
+
+// func (m *machine) initialize() error {
+// 	// create the network config for our firecracker vm
+// 	fcNetworkConfig := []firecracker.NetworkInterface{
+// 		{
+// 			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
+// 				MacAddress:  m.network.mac.String(),
+// 				HostDevName: m.network.tap,
+// 				IPConfiguration: &firecracker.IPConfiguration{
+// 					IPAddr: net.IPNet{
+// 						IP:   m.network.ip.IP,
+// 						Mask: m.network.ip.Mask,
+// 					},
+// 					Gateway:     m.network.gateway.IP,
+// 					Nameservers: []string{m.network.gateway.IP.String()},
+// 					IfName:      GUESTINTERFACE,
+// 				},
+// 			},
+// 		},
+// 	}
+
+// 	// prepare our root file system
+// 	overlay := path.Join(ROOTPATH, fmt.Sprintf("ce%s.ext4", m.name))
+
+// 	// dd if=/dev/zero of=[TARGET_OVERLAY_FILE] conv=sparse bs=1M count=[DISK_SIZE]
+// 	cmd := exec.Command(DD_BIN, "if=/dev/zero", fmt.Sprintf("of=%s", overlay), "conv=sparse", "bs=1M", fmt.Sprintf("count=%d", m.disksize))
+
+// 	if out, err := cmd.CombinedOutput(); err != nil {
+// 		return errors.Wrapf(err, "%#v: output: %s", cmd.Args, out)
+// 	}
+
+// 	// mkfs.ext4 [TARGET_OVERLAY_FILE]
+// 	cmd = exec.Command(MKFS_BIN, overlay)
+
+// 	if out, err := cmd.CombinedOutput(); err != nil {
+// 		return errors.Wrapf(err, "%#v: output: %s", cmd.Args, out)
+// 	}
+
+// 	outPath := filepath.Join(OUTPUTPATH, fmt.Sprintf("%s.out", m.name))
+
+// 	errPath := filepath.Join(OUTPUTPATH, fmt.Sprintf("%s.err", m.name))
+
+// 	outFile, err := os.Create(outPath)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	errFile, err := os.Create(errPath)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	socketPath := getSocketPath(m.name)
+
+// 	err = os.Remove(socketPath)
+// 	if err != nil {
+// 		// continue
+// 		var pathError *fs.PathError
+// 		if errors.As(err, &pathError) {
+// 			if pathError.Err != syscall.ENOENT {
+// 				log.Errorf("Error removing old socket path: %s", err.Error())
+// 			}
+// 		} else {
+// 			log.Errorf("Error removing old socket path: %s", err.Error())
+// 		}
+// 	}
+
+// 	firecrackerProcessRunner, err := getFirecrackerProcessRunner(socketPath, outFile, errFile)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	var loglevel string
+
+// 	// unfortunately Firecracker is incredibly verbose
+// 	switch log.GetLevel() {
+// 	case log.TraceLevel:
+// 		loglevel = "TRACE"
+// 	default:
+// 		loglevel = "ERROR"
+// 	}
+
+// 	// magic!
+// 	// see: https://www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html
+// 	bootparams := "init=/sbin/ceinit ro console=ttyS0 noapic acpi=off reboot=k panic=1 random.trust_cpu=on pci=off tsc=reliable quiet ipv6.disable=1 nomodule overlay_root=vdb loglevel=3 i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd"
+
+// 	for _, param := range m.bootparams {
+// 		bootparams += " " + param
+// 	}
+
+// 	vm, err := firecracker.NewMachine(context.Background(), firecracker.Config{
+// 		SocketPath:      socketPath,
+// 		KernelImagePath: path.Join(ROOTPATH, m.kernel),
+// 		KernelArgs:      bootparams,
+// 		Drives: []models.Drive{
+// 			{
+// 				DriveID:      firecracker.String("root"),
+// 				PathOnHost:   firecracker.String(path.Join(ROOTPATH, m.diskimage)),
+// 				IsRootDevice: firecracker.Bool(true),
+// 				IsReadOnly:   firecracker.Bool(true),
+// 			},
+// 			{
+// 				DriveID:      firecracker.String("overlay"),
+// 				PathOnHost:   firecracker.String(overlay),
+// 				IsRootDevice: firecracker.Bool(false),
+// 				IsReadOnly:   firecracker.Bool(false),
+// 			},
+// 		},
+// 		MachineCfg: models.MachineConfiguration{
+// 			MemSizeMib: firecracker.Int64(int64(m.ram)),
+// 			VcpuCount:  firecracker.Int64(int64(m.vcpucount)),
+// 		},
+// 		LogLevel:          loglevel,
+// 		NetworkInterfaces: fcNetworkConfig,
+// 	}, firecrackerProcessRunner)
+
+// 	switch log.GetLevel() {
+// 	case log.TraceLevel:
+// 	default:
+// 		l := log.New()
+// 		l.SetLevel(log.WarnLevel)
+// 		firecracker.WithLogger(log.NewEntry(l))(vm)
+
+// 	}
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	m.vm = vm
+
+// 	return nil
+// }
+
+// // getSocketPath provides a randomized socket path by building a unique filename
+// // and searching for the existence of directories {$HOME, os.TempDir()} and returning
+// // the path with the first directory joined with the unique filename. If we
+// // can't find a good path panics.
+// // This must have been copied from somewhere else, but I have no idea where.
+// func getSocketPath(id string) string {
+// 	filename := strings.Join([]string{
+// 		".firecracker.sock",
+// 		strconv.Itoa(os.Getpid()),
+// 		id,
+// 		strconv.Itoa(rand.Intn(1000))},
+// 		"-",
+// 	)
+
+// 	dir := os.TempDir()
+
+// 	return filepath.Join(dir, filename)
+// }
+
+// func getFirecrackerProcessRunner(socketPath string, outFile io.Writer, errFile io.Writer) (firecracker.Opt, error) {
+// 	// from https://github.com/firecracker-microvm/firectl
+
+// 	firecrackerBinary, err := exec.LookPath("firecracker")
+// 	if err != nil {
+// 		return nil, errors.WithStack(err)
+// 	}
+
+// 	finfo, err := os.Stat(firecrackerBinary)
+// 	if os.IsNotExist(err) {
+// 		return nil, errors.Errorf("binary %q does not exist: %v", firecrackerBinary, err)
+// 	}
+
+// 	if err != nil {
+// 		return nil, errors.Errorf("failed to stat binary, %q: %v", firecrackerBinary, err)
+// 	}
+
+// 	if finfo.IsDir() {
+// 		return nil, errors.Errorf("binary, %q, is a directory", firecrackerBinary)
+// 	} else if finfo.Mode()&0111 == 0 {
+// 		return nil, errors.Errorf("binary, %q, is not executable. Check permissions of binary", firecrackerBinary)
+// 	}
+
+// 	return firecracker.WithProcessRunner(firecracker.VMCommandBuilder{}.
+// 		WithBin(firecrackerBinary).
+// 		WithSocketPath(socketPath).
+// 		WithStdout(outFile).
+// 		WithStderr(errFile).
+// 		Build(context.Background())), nil
+// }
+
+// createNetwork 创建所有4个端口的tap设备（但不配置IP）
 func (m *machine) createNetwork() error {
-	log.Tracef("creating network for %s", m.network.ip.String())
-	// remove old network tap if exists
-	// don't care about errors here
-	_ = removeNetworkDevice(m.network.tap, HOST_INTERFACE)
-
-	// create new network tap
-	err := createNetworkDevice(m.network.gateway, m.network.tap, HOST_INTERFACE)
-
-	if err != nil {
-		return err
+	log.Tracef("creating %d network ports for %s", NUM_PORTS, m.name)
+	
+	for port := 0; port < NUM_PORTS; port++ {
+		tapName := m.networks[port].tap
+		
+		// 删除旧设备（如果存在）
+		_ = removeNetworkDevice(tapName, HOST_INTERFACE)
+		
+		// 创建tap设备
+		err := createNetworkDevice(tapName, HOST_INTERFACE)
+		if err != nil {
+			// 清理已创建的设备
+			for p := 0; p < port; p++ {
+				_ = removeNetworkDevice(m.networks[p].tap, HOST_INTERFACE)
+			}
+			return errors.Wrapf(err, "failed to create port %d for %s", port, m.name)
+		}
+		
+		log.Tracef("created tap %s for %s port %d", tapName, m.name, port)
 	}
-
+	
 	return nil
 }
 
+// removeNetwork 删除所有端口的tap设备
 func (m *machine) removeNetwork() error {
-	// remove old network tap if exists
-	// don't care about errors here
-	_ = removeNetworkDevice(m.network.tap, HOST_INTERFACE)
-
-	return nil
+	log.Tracef("removing network ports for %s", m.name)
+	
+	var lastErr error
+	for port := 0; port < NUM_PORTS; port++ {
+		err := removeNetworkDevice(m.networks[port].tap, HOST_INTERFACE)
+		if err != nil {
+			lastErr = err
+			log.Errorf("failed to remove port %d for %s: %v", port, m.name, err)
+		}
+	}
+	
+	return lastErr
 }
 
+// configurePort 为已建立链接的端口配置IP和路由
+func (m *machine) configurePort(port int) error {
+	if port < 0 || port >= NUM_PORTS {
+		return errors.Errorf("invalid port number: %d", port)
+	}
+	
+	return configurePortIP(&m.networks[port])
+}
+
+// deconfigurePort 移除端口的IP配置
+func (m *machine) deconfigurePort(port int) error {
+	if port < 0 || port >= NUM_PORTS {
+		return errors.Errorf("invalid port number: %d", port)
+	}
+	
+	return deconfigurePortIP(&m.networks[port])
+}
+
+// initialize 初始化Firecracker VM（支持4个网络接口）
 func (m *machine) initialize() error {
-	// create the network config for our firecracker vm
-	fcNetworkConfig := []firecracker.NetworkInterface{
-		{
+	// 构建网络接口配置（包括所有4个端口）
+	fcNetworkConfig := make([]firecracker.NetworkInterface, 0, NUM_PORTS)
+	
+	for port := 0; port < NUM_PORTS; port++ {
+		netPort := &m.networks[port]
+		
+		// 创建接口配置
+		ifaceConfig := firecracker.NetworkInterface{
 			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
-				MacAddress:  m.network.mac.String(),
-				HostDevName: m.network.tap,
-				IPConfiguration: &firecracker.IPConfiguration{
-					IPAddr: net.IPNet{
-						IP:   m.network.ip.IP,
-						Mask: m.network.ip.Mask,
-					},
-					Gateway:     m.network.gateway.IP,
-					Nameservers: []string{m.network.gateway.IP.String()},
-					IfName:      GUESTINTERFACE,
-				},
+				MacAddress:  netPort.mac.String(),
+				HostDevName: netPort.tap,
 			},
-		},
+		}
+		
+		// 只有已连接的端口才配置IP
+		if netPort.connected {
+			ifaceConfig.StaticConfiguration.IPConfiguration = &firecracker.IPConfiguration{
+				IPAddr: net.IPNet{
+					IP:   netPort.ip.IP,
+					Mask: netPort.ip.Mask,
+				},
+				// P2P链接不需要网关
+				Gateway:     nil,
+				Nameservers: []string{}, // 可以从第一个连接的端口获取DNS
+				IfName:      getGuestInterfaceName(port),
+			}
+		} else {
+			// 未连接的端口：创建接口但不配置IP
+			ifaceConfig.StaticConfiguration.IPConfiguration = &firecracker.IPConfiguration{
+				IfName: getGuestInterfaceName(port),
+				// 其他字段留空
+			}
+		}
+		
+		fcNetworkConfig = append(fcNetworkConfig, ifaceConfig)
 	}
 
-	// prepare our root file system
+	// 准备根文件系统
 	overlay := path.Join(ROOTPATH, fmt.Sprintf("ce%s.ext4", m.name))
-
+	
 	// dd if=/dev/zero of=[TARGET_OVERLAY_FILE] conv=sparse bs=1M count=[DISK_SIZE]
-	cmd := exec.Command(DD_BIN, "if=/dev/zero", fmt.Sprintf("of=%s", overlay), "conv=sparse", "bs=1M", fmt.Sprintf("count=%d", m.disksize))
-
+	cmd := exec.Command(DD_BIN, "if=/dev/zero", fmt.Sprintf("of=%s", overlay),
+		"conv=sparse", "bs=1M", fmt.Sprintf("count=%d", m.disksize))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrapf(err, "%#v: output: %s", cmd.Args, out)
 	}
 
 	// mkfs.ext4 [TARGET_OVERLAY_FILE]
 	cmd = exec.Command(MKFS_BIN, overlay)
-
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrapf(err, "%#v: output: %s", cmd.Args, out)
 	}
 
+	// 准备输出文件
 	outPath := filepath.Join(OUTPUTPATH, fmt.Sprintf("%s.out", m.name))
-
 	errPath := filepath.Join(OUTPUTPATH, fmt.Sprintf("%s.err", m.name))
-
+	
 	outFile, err := os.Create(outPath)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
-
+	
 	errFile, err := os.Create(errPath)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
+	// Socket路径
 	socketPath := getSocketPath(m.name)
-
 	err = os.Remove(socketPath)
 	if err != nil {
-		// continue
 		var pathError *fs.PathError
 		if errors.As(err, &pathError) {
 			if pathError.Err != syscall.ENOENT {
@@ -144,14 +405,11 @@ func (m *machine) initialize() error {
 	}
 
 	firecrackerProcessRunner, err := getFirecrackerProcessRunner(socketPath, outFile, errFile)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	var loglevel string
-
-	// unfortunately Firecracker is incredibly verbose
 	switch log.GetLevel() {
 	case log.TraceLevel:
 		loglevel = "TRACE"
@@ -159,30 +417,29 @@ func (m *machine) initialize() error {
 		loglevel = "ERROR"
 	}
 
-	// magic!
-	// see: https://www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html
+	// 内核启动参数
 	bootparams := "init=/sbin/ceinit ro console=ttyS0 noapic acpi=off reboot=k panic=1 random.trust_cpu=on pci=off tsc=reliable quiet ipv6.disable=1 nomodule overlay_root=vdb loglevel=3 i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd"
-
 	for _, param := range m.bootparams {
 		bootparams += " " + param
 	}
 
+	// 创建Firecracker VM
 	vm, err := firecracker.NewMachine(context.Background(), firecracker.Config{
 		SocketPath:      socketPath,
 		KernelImagePath: path.Join(ROOTPATH, m.kernel),
 		KernelArgs:      bootparams,
 		Drives: []models.Drive{
 			{
-				DriveID:      firecracker.String("root"),
-				PathOnHost:   firecracker.String(path.Join(ROOTPATH, m.diskimage)),
-				IsRootDevice: firecracker.Bool(true),
-				IsReadOnly:   firecracker.Bool(true),
+				DriveID:        firecracker.String("root"),
+				PathOnHost:     firecracker.String(path.Join(ROOTPATH, m.diskimage)),
+				IsRootDevice:   firecracker.Bool(true),
+				IsReadOnly:     firecracker.Bool(true),
 			},
 			{
-				DriveID:      firecracker.String("overlay"),
-				PathOnHost:   firecracker.String(overlay),
-				IsRootDevice: firecracker.Bool(false),
-				IsReadOnly:   firecracker.Bool(false),
+				DriveID:        firecracker.String("overlay"),
+				PathOnHost:     firecracker.String(overlay),
+				IsRootDevice:   firecracker.Bool(false),
+				IsReadOnly:     firecracker.Bool(false),
 			},
 		},
 		MachineCfg: models.MachineConfiguration{
@@ -199,7 +456,6 @@ func (m *machine) initialize() error {
 		l := log.New()
 		l.SetLevel(log.WarnLevel)
 		firecracker.WithLogger(log.NewEntry(l))(vm)
-
 	}
 
 	if err != nil {
@@ -207,15 +463,9 @@ func (m *machine) initialize() error {
 	}
 
 	m.vm = vm
-
 	return nil
 }
 
-// getSocketPath provides a randomized socket path by building a unique filename
-// and searching for the existence of directories {$HOME, os.TempDir()} and returning
-// the path with the first directory joined with the unique filename. If we
-// can't find a good path panics.
-// This must have been copied from somewhere else, but I have no idea where.
 func getSocketPath(id string) string {
 	filename := strings.Join([]string{
 		".firecracker.sock",
@@ -224,15 +474,11 @@ func getSocketPath(id string) string {
 		strconv.Itoa(rand.Intn(1000))},
 		"-",
 	)
-
 	dir := os.TempDir()
-
 	return filepath.Join(dir, filename)
 }
 
 func getFirecrackerProcessRunner(socketPath string, outFile io.Writer, errFile io.Writer) (firecracker.Opt, error) {
-	// from https://github.com/firecracker-microvm/firectl
-
 	firecrackerBinary, err := exec.LookPath("firecracker")
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -242,11 +488,9 @@ func getFirecrackerProcessRunner(socketPath string, outFile io.Writer, errFile i
 	if os.IsNotExist(err) {
 		return nil, errors.Errorf("binary %q does not exist: %v", firecrackerBinary, err)
 	}
-
 	if err != nil {
 		return nil, errors.Errorf("failed to stat binary, %q: %v", firecrackerBinary, err)
 	}
-
 	if finfo.IsDir() {
 		return nil, errors.Errorf("binary, %q, is a directory", firecrackerBinary)
 	} else if finfo.Mode()&0111 == 0 {

@@ -20,45 +20,140 @@ package virt
 import (
 	"net"
 
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/OpenFogStack/celestial/pkg/orchestrator"
 )
 
-func (v *Virt) getNetwork(id orchestrator.MachineID) (net.IPNet, error) {
-	n, err := getNet(id)
-	if err != nil {
-		return net.IPNet{}, err
+// func (v *Virt) getNetwork(id orchestrator.MachineID) (net.IPNet, error) {
+// 	n, err := getNet(id)
+// 	if err != nil {
+// 		return net.IPNet{}, err
+// 	}
+
+// 	return n.ip, nil
+// }
+
+// func (v *Virt) setbandwidth(source orchestrator.MachineID, target orchestrator.MachineID, bandwidth uint64) error {
+// 	n, err := v.getNetwork(target)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return v.neb.SetBandwidth(source, n, bandwidth)
+// }
+
+// func (v *Virt) setlatency(source orchestrator.MachineID, target orchestrator.MachineID, latency uint32) error {
+// 	n, err := v.getNetwork(target)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return v.neb.SetLatency(source, n, latency)
+// }
+
+// func (v *Virt) unblocklink(source orchestrator.MachineID, target orchestrator.MachineID) error {
+// 	n, err := v.getNetwork(target)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return v.neb.UnblockLink(source, n)
+// }
+// func (v *Virt) blocklink(source orchestrator.MachineID, target orchestrator.MachineID) error {
+// 	n, err := v.getNetwork(target)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return v.neb.BlockLink(source, n)
+// }
+
+// getPortNetwork 获取指定端口的目标网络
+func (v *Virt) getPortNetwork(id orchestrator.MachineID, port int) (net.IPNet, error) {
+	v.RLock()
+	machine, exists := v.machines[id]
+	v.RUnlock()
+
+	if !exists {
+		return net.IPNet{}, errors.Errorf("machine %s not found", id.String())
 	}
 
-	return n.ip, nil
+	machine.Lock()
+	defer machine.Unlock()
+
+	if port < 0 || port >= NUM_PORTS {
+		return net.IPNet{}, errors.Errorf("invalid port number: %d", port)
+	}
+
+	if !machine.networks[port].connected {
+		return net.IPNet{}, errors.Errorf("port %d is not connected", port)
+	}
+
+	return machine.networks[port].linkNetwork, nil
 }
 
-func (v *Virt) setbandwidth(source orchestrator.MachineID, target orchestrator.MachineID, bandwidth uint64) error {
-	n, err := v.getNetwork(target)
+// getTargetPortAndNetwork 找到连接到目标机器的端口及其网络
+func (v *Virt) getTargetPortAndNetwork(source orchestrator.MachineID, target orchestrator.MachineID) (int, net.IPNet, error) {
+	v.RLock()
+	machine, exists := v.machines[source]
+	v.RUnlock()
+
+	if !exists {
+		return -1, net.IPNet{}, errors.Errorf("source machine %s not found", source.String())
+	}
+
+	machine.Lock()
+	defer machine.Unlock()
+
+	// 查找连接到目标的端口
+	for port := 0; port < NUM_PORTS; port++ {
+		conn := machine.portConnections[port]
+		if conn != nil && conn.peerMachineID == target {
+			return port, machine.networks[port].linkNetwork, nil
+		}
+	}
+
+	return -1, net.IPNet{}, errors.Errorf("no port connects %s to %s", source.String(), target.String())
+}
+
+// setBandwidthPort 设置指定端口的带宽
+func (v *Virt) setBandwidthPort(source orchestrator.MachineID, port int, target orchestrator.MachineID, bandwidth uint64) error {
+	n, err := v.getPortNetwork(source, port)
 	if err != nil {
 		return err
 	}
-	return v.neb.SetBandwidth(source, n, bandwidth)
+
+	log.Tracef("Setting bandwidth on %s:%d to %s: %d kbps", source.String(), port, target.String(), bandwidth)
+	return v.neb.SetBandwidthPort(source, port, n, bandwidth)
 }
 
-func (v *Virt) setlatency(source orchestrator.MachineID, target orchestrator.MachineID, latency uint32) error {
-	n, err := v.getNetwork(target)
+// setLatencyPort 设置指定端口的延迟
+func (v *Virt) setLatencyPort(source orchestrator.MachineID, port int, target orchestrator.MachineID, latency uint32) error {
+	n, err := v.getPortNetwork(source, port)
 	if err != nil {
 		return err
 	}
-	return v.neb.SetLatency(source, n, latency)
+
+	log.Tracef("Setting latency on %s:%d to %s: %d us", source.String(), port, target.String(), latency)
+	return v.neb.SetLatencyPort(source, port, n, latency)
 }
 
-func (v *Virt) unblocklink(source orchestrator.MachineID, target orchestrator.MachineID) error {
-	n, err := v.getNetwork(target)
+// unblockLinkPort 解除指定端口的链接阻塞
+func (v *Virt) unblockLinkPort(source orchestrator.MachineID, port int, target orchestrator.MachineID) error {
+	n, err := v.getPortNetwork(source, port)
 	if err != nil {
 		return err
 	}
-	return v.neb.UnblockLink(source, n)
+
+	log.Tracef("Unblocking link on %s:%d to %s", source.String(), port, target.String())
+	return v.neb.UnblockLinkPort(source, port, n)
 }
-func (v *Virt) blocklink(source orchestrator.MachineID, target orchestrator.MachineID) error {
-	n, err := v.getNetwork(target)
+
+// blockLinkPort 阻塞指定端口的链接
+func (v *Virt) blockLinkPort(source orchestrator.MachineID, port int, target orchestrator.MachineID) error {
+	n, err := v.getPortNetwork(source, port)
 	if err != nil {
 		return err
 	}
-	return v.neb.BlockLink(source, n)
+
+	log.Tracef("Blocking link on %s:%d to %s", source.String(), port, target.String())
+	return v.neb.BlockLinkPort(source, port, n)
 }

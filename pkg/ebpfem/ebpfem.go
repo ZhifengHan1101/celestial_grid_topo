@@ -33,6 +33,219 @@ import (
 
 //go:generate env BPF2GO_FLAGS="-O3" go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 edt ebpf/net.c -- -I./ebpf/headers
 
+// func New() *EBPFem {
+// 	return &EBPFem{
+// 		vms: make(map[orchestrator.MachineID]*vm),
+// 	}
+// }
+
+// func (e *EBPFem) Stop() error {
+// 	e.Lock()
+// 	defer e.Unlock()
+// 	for _, v := range e.vms {
+// 		err := v.objs.Close()
+// 		if err != nil {
+// 			return errors.WithStack(err)
+// 		}
+// 	}
+
+// 	return nil
+// }
+
+// func (e *EBPFem) Register(id orchestrator.MachineID, netIf string) error {
+
+// 	v := &vm{
+// 		netIf: netIf,
+// 		objs:  &edtObjects{},
+// 		hbd:   make(map[string]*handleKbpsDelay),
+// 	}
+
+// 	v.Lock()
+// 	defer v.Unlock()
+
+// 	log.Tracef("loading ebpf objects for %s", id.String())
+// 	if err := loadEdtObjects(v.objs, nil); err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	progFd := v.objs.edtPrograms.TcMain.FD()
+
+// 	log.Tracef("getting interface %s", v.netIf)
+// 	iface, err := getIface(v.netIf)
+// 	if err != nil {
+// 		log.Errorf("interface %s not found", v.netIf)
+// 		return errors.WithStack(err)
+// 	}
+
+// 	// Create clsact qdisc
+// 	log.Tracef("creating clsact qdisc for %s", v.netIf)
+// 	_, err = createClsactQdisc(iface)
+// 	if err != nil {
+// 		log.Errorf("error creating clsact qdisc for %s", v.netIf)
+// 		return errors.WithStack(err)
+// 	}
+
+// 	// Create fq qdisc
+// 	log.Tracef("creating fq qdisc for %s", v.netIf)
+// 	_, err = createFQdisc(iface)
+// 	if err != nil {
+// 		log.Tracef("error creating fq qdisc for %s", v.netIf)
+// 		return errors.WithStack(err)
+// 	}
+
+// 	// Attach bpf program
+// 	log.Tracef("attaching bpf program for %s", v.netIf)
+// 	_, err = createTCBpfFilter(iface, progFd, netlink.HANDLE_MIN_EGRESS, "edt_bandwidth")
+// 	if err != nil {
+// 		log.Errorf("error attaching bpf program for %s", v.netIf)
+// 		return errors.WithStack(err)
+// 	}
+
+// 	e.Lock()
+// 	e.vms[id] = v
+// 	e.Unlock()
+
+// 	return nil
+// }
+
+// func (v *vm) getHBD(target net.IPNet) *handleKbpsDelay {
+// 	hbd, ok := v.hbd[target.String()]
+// 	if ok {
+// 		return hbd
+// 	}
+
+// 	hbd = &handleKbpsDelay{
+// 		throttleRateKbps: DEFAULT_BANDWIDTH_KBPS,
+// 		delayUs:          DEFAULT_LATENCY_US,
+// 	}
+
+// 	v.hbd[target.String()] = hbd
+
+// 	return hbd
+// }
+
+// func (e *EBPFem) SetBandwidth(source orchestrator.MachineID, target net.IPNet, bandwidthKbits uint64) error {
+// 	e.RLock()
+// 	v, ok := e.vms[source]
+// 	e.RUnlock()
+
+// 	if !ok {
+// 		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+// 	}
+
+// 	// it is unclear to me if ebpf map access is thread safe
+// 	// so: we lock here, just in case it is not
+// 	v.Lock()
+// 	defer v.Unlock()
+
+// 	hbd := v.getHBD(target)
+
+// 	hbd.throttleRateKbps = uint32(bandwidthKbits)
+
+// 	ips, err := parseNetToLongs(target)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	for _, ip := range ips {
+// 		log.Tracef("updating bandwidth for %d to %d", ip, bandwidthKbits)
+// 		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
+// 		if err != nil {
+// 			return errors.WithStack(err)
+// 		}
+// 	}
+// 	return nil
+// }
+
+// func (e *EBPFem) SetLatency(source orchestrator.MachineID, target net.IPNet, latency uint32) error {
+// 	e.RLock()
+// 	v, ok := e.vms[source]
+// 	e.RUnlock()
+// 	if !ok {
+// 		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+// 	}
+
+// 	v.Lock()
+// 	defer v.Unlock()
+
+// 	hbd := v.getHBD(target)
+
+// 	hbd.delayUs = uint32(latency)
+
+// 	ips, err := parseNetToLongs(target)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	for _, ip := range ips {
+// 		log.Tracef("updating latency for %d to %d", ip, latency)
+// 		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
+// 		if err != nil {
+// 			return errors.WithStack(err)
+// 		}
+// 	}
+// 	return nil
+// }
+
+// func (e *EBPFem) UnblockLink(source orchestrator.MachineID, target net.IPNet) error {
+// 	e.RLock()
+// 	v, ok := e.vms[source]
+// 	e.RUnlock()
+// 	if !ok {
+// 		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+// 	}
+
+// 	v.Lock()
+// 	defer v.Unlock()
+
+// 	hbd := v.getHBD(target)
+
+// 	ips, err := parseNetToLongs(target)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	for _, ip := range ips {
+// 		log.Tracef("unblocking for %d", ip)
+// 		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
+// 		if err != nil {
+// 			return errors.WithStack(err)
+// 		}
+// 	}
+// 	return nil
+// }
+
+// func (e *EBPFem) BlockLink(source orchestrator.MachineID, target net.IPNet) error {
+// 	e.RLock()
+// 	v, ok := e.vms[source]
+// 	e.RUnlock()
+// 	if !ok {
+// 		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+// 	}
+
+// 	v.Lock()
+// 	defer v.Unlock()
+
+// 	ips, err := parseNetToLongs(target)
+
+// 	if err != nil {
+// 		return errors.WithStack(err)
+// 	}
+
+// 	for _, ip := range ips {
+// 		log.Tracef("blocking for %d", ip)
+// 		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, &handleKbpsDelay{throttleRateKbps: BLOCKED_BANDWIDTH_KBPS, delayUs: BLOCKED_LATENCY_US})
+// 		if err != nil {
+// 			return errors.WithStack(err)
+// 		}
+// 	}
+
+// 	return nil
+// }
+
 func New() *EBPFem {
 	return &EBPFem{
 		vms: make(map[orchestrator.MachineID]*vm),
@@ -42,74 +255,123 @@ func New() *EBPFem {
 func (e *EBPFem) Stop() error {
 	e.Lock()
 	defer e.Unlock()
+
 	for _, v := range e.vms {
-		err := v.objs.Close()
-		if err != nil {
-			return errors.WithStack(err)
+		v.RLock()
+		for _, port := range v.ports {
+			err := port.objs.Close()
+			if err != nil {
+				v.RUnlock()
+				return errors.WithStack(err)
+			}
 		}
+		v.RUnlock()
 	}
 
 	return nil
 }
 
+// Register 旧接口（向后兼容）
 func (e *EBPFem) Register(id orchestrator.MachineID, netIf string) error {
+	return e.RegisterPort(id, 0, netIf)
+}
 
-	v := &vm{
-		netIf: netIf,
-		objs:  &edtObjects{},
-		hbd:   make(map[string]*handleKbpsDelay),
+// RegisterPort 注册VM的一个端口
+func (e *EBPFem) RegisterPort(id orchestrator.MachineID, port int, netIf string) error {
+	log.Tracef("registering eBPF for machine %s port %d on interface %s", id.String(), port, netIf)
+
+	e.Lock()
+	defer e.Unlock()
+
+	// 获取或创建VM
+	v, ok := e.vms[id]
+	if !ok {
+		v = &vm{
+			ports: make(map[int]*vmPort),
+		}
+		e.vms[id] = v
 	}
 
 	v.Lock()
 	defer v.Unlock()
 
-	log.Tracef("loading ebpf objects for %s", id.String())
-	if err := loadEdtObjects(v.objs, nil); err != nil {
+	// 检查端口是否已存在
+	if _, exists := v.ports[port]; exists {
+		return errors.Errorf("port %d already registered for machine %s", port, id.String())
+	}
+
+	vp := &vmPort{
+		netIf: netIf,
+		objs:  &edtObjects{},
+		hbd:   make(map[string]*handleKbpsDelay),
+	}
+
+	log.Tracef("loading ebpf objects for %s port %d", id.String(), port)
+	if err := loadEdtObjects(vp.objs, nil); err != nil {
 		return errors.WithStack(err)
 	}
 
-	progFd := v.objs.edtPrograms.TcMain.FD()
+	progFd := vp.objs.edtPrograms.TcMain.FD()
 
-	log.Tracef("getting interface %s", v.netIf)
-	iface, err := getIface(v.netIf)
+	log.Tracef("getting interface %s", vp.netIf)
+	iface, err := getIface(vp.netIf)
 	if err != nil {
-		log.Errorf("interface %s not found", v.netIf)
+		log.Errorf("interface %s not found", vp.netIf)
 		return errors.WithStack(err)
 	}
 
 	// Create clsact qdisc
-	log.Tracef("creating clsact qdisc for %s", v.netIf)
+	log.Tracef("creating clsact qdisc for %s", vp.netIf)
 	_, err = createClsactQdisc(iface)
 	if err != nil {
-		log.Errorf("error creating clsact qdisc for %s", v.netIf)
+		log.Errorf("error creating clsact qdisc for %s", vp.netIf)
 		return errors.WithStack(err)
 	}
 
 	// Create fq qdisc
-	log.Tracef("creating fq qdisc for %s", v.netIf)
+	log.Tracef("creating fq qdisc for %s", vp.netIf)
 	_, err = createFQdisc(iface)
 	if err != nil {
-		log.Tracef("error creating fq qdisc for %s", v.netIf)
+		log.Tracef("error creating fq qdisc for %s", vp.netIf)
 		return errors.WithStack(err)
 	}
 
 	// Attach bpf program
-	log.Tracef("attaching bpf program for %s", v.netIf)
+	log.Tracef("attaching bpf program for %s", vp.netIf)
 	_, err = createTCBpfFilter(iface, progFd, netlink.HANDLE_MIN_EGRESS, "edt_bandwidth")
 	if err != nil {
-		log.Errorf("error attaching bpf program for %s", v.netIf)
+		log.Errorf("error attaching bpf program for %s", vp.netIf)
 		return errors.WithStack(err)
 	}
 
-	e.Lock()
-	e.vms[id] = v
-	e.Unlock()
+	v.ports[port] = vp
+	log.Tracef("successfully registered eBPF for machine %s port %d", id.String(), port)
 
 	return nil
 }
 
-func (v *vm) getHBD(target net.IPNet) *handleKbpsDelay {
-	hbd, ok := v.hbd[target.String()]
+func (e *EBPFem) getPort(id orchestrator.MachineID, port int) (*vmPort, error) {
+	e.RLock()
+	v, ok := e.vms[id]
+	e.RUnlock()
+
+	if !ok {
+		return nil, errors.Errorf("machine %s does not exist", id.String())
+	}
+
+	v.RLock()
+	vp, ok := v.ports[port]
+	v.RUnlock()
+
+	if !ok {
+		return nil, errors.Errorf("port %d does not exist for machine %s", port, id.String())
+	}
+
+	return vp, nil
+}
+
+func (vp *vmPort) getHBD(target net.IPNet) *handleKbpsDelay {
+	hbd, ok := vp.hbd[target.String()]
 	if ok {
 		return hbd
 	}
@@ -118,126 +380,137 @@ func (v *vm) getHBD(target net.IPNet) *handleKbpsDelay {
 		throttleRateKbps: DEFAULT_BANDWIDTH_KBPS,
 		delayUs:          DEFAULT_LATENCY_US,
 	}
-
-	v.hbd[target.String()] = hbd
-
+	vp.hbd[target.String()] = hbd
 	return hbd
 }
 
+// SetBandwidth 旧接口（向后兼容）
 func (e *EBPFem) SetBandwidth(source orchestrator.MachineID, target net.IPNet, bandwidthKbits uint64) error {
-	e.RLock()
-	v, ok := e.vms[source]
-	e.RUnlock()
+	return e.SetBandwidthPort(source, 0, target, bandwidthKbits)
+}
 
-	if !ok {
-		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+// SetBandwidthPort 为指定端口设置带宽
+func (e *EBPFem) SetBandwidthPort(source orchestrator.MachineID, port int, target net.IPNet, bandwidthKbits uint64) error {
+	vp, err := e.getPort(source, port)
+	if err != nil {
+		return err
 	}
 
-	// it is unclear to me if ebpf map access is thread safe
-	// so: we lock here, just in case it is not
-	v.Lock()
-	defer v.Unlock()
+	vp.Lock()
+	defer vp.Unlock()
 
-	hbd := v.getHBD(target)
-
+	hbd := vp.getHBD(target)
 	hbd.throttleRateKbps = uint32(bandwidthKbits)
 
 	ips, err := parseNetToLongs(target)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	for _, ip := range ips {
 		log.Tracef("updating bandwidth for %d to %d", ip, bandwidthKbits)
-		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
+		err = vp.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
 		if err != nil {
 			return errors.WithStack(err)
 		}
 	}
+
 	return nil
 }
 
+// SetLatency 旧接口（向后兼容）
 func (e *EBPFem) SetLatency(source orchestrator.MachineID, target net.IPNet, latency uint32) error {
-	e.RLock()
-	v, ok := e.vms[source]
-	e.RUnlock()
-	if !ok {
-		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+	return e.SetLatencyPort(source, 0, target, latency)
+}
+
+// SetLatencyPort 为指定端口设置延迟
+func (e *EBPFem) SetLatencyPort(source orchestrator.MachineID, port int, target net.IPNet, latency uint32) error {
+	vp, err := e.getPort(source, port)
+	if err != nil {
+		return err
 	}
 
-	v.Lock()
-	defer v.Unlock()
+	vp.Lock()
+	defer vp.Unlock()
 
-	hbd := v.getHBD(target)
-
+	hbd := vp.getHBD(target)
 	hbd.delayUs = uint32(latency)
 
 	ips, err := parseNetToLongs(target)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	for _, ip := range ips {
 		log.Tracef("updating latency for %d to %d", ip, latency)
-		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
+		err = vp.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
 		if err != nil {
 			return errors.WithStack(err)
 		}
 	}
+
 	return nil
 }
 
+// UnblockLink 旧接口（向后兼容）
 func (e *EBPFem) UnblockLink(source orchestrator.MachineID, target net.IPNet) error {
-	e.RLock()
-	v, ok := e.vms[source]
-	e.RUnlock()
-	if !ok {
-		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+	return e.UnblockLinkPort(source, 0, target)
+}
+
+// UnblockLinkPort 解除指定端口的链接阻塞
+func (e *EBPFem) UnblockLinkPort(source orchestrator.MachineID, port int, target net.IPNet) error {
+	vp, err := e.getPort(source, port)
+	if err != nil {
+		return err
 	}
 
-	v.Lock()
-	defer v.Unlock()
+	vp.Lock()
+	defer vp.Unlock()
 
-	hbd := v.getHBD(target)
+	hbd := vp.getHBD(target)
 
 	ips, err := parseNetToLongs(target)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	for _, ip := range ips {
 		log.Tracef("unblocking for %d", ip)
-		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
+		err = vp.objs.IP_HANDLE_KBPS_DELAY.Put(ip, hbd)
 		if err != nil {
 			return errors.WithStack(err)
 		}
 	}
+
 	return nil
 }
 
+// BlockLink 旧接口（向后兼容）
 func (e *EBPFem) BlockLink(source orchestrator.MachineID, target net.IPNet) error {
-	e.RLock()
-	v, ok := e.vms[source]
-	e.RUnlock()
-	if !ok {
-		return errors.Errorf("machine %d-%d does not exist", source.Group, source.Id)
+	return e.BlockLinkPort(source, 0, target)
+}
+
+// BlockLinkPort 阻塞指定端口的链接
+func (e *EBPFem) BlockLinkPort(source orchestrator.MachineID, port int, target net.IPNet) error {
+	vp, err := e.getPort(source, port)
+	if err != nil {
+		return err
 	}
 
-	v.Lock()
-	defer v.Unlock()
+	vp.Lock()
+	defer vp.Unlock()
 
 	ips, err := parseNetToLongs(target)
-
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	for _, ip := range ips {
 		log.Tracef("blocking for %d", ip)
-		err = v.objs.IP_HANDLE_KBPS_DELAY.Put(ip, &handleKbpsDelay{throttleRateKbps: BLOCKED_BANDWIDTH_KBPS, delayUs: BLOCKED_LATENCY_US})
+		err = vp.objs.IP_HANDLE_KBPS_DELAY.Put(ip, &handleKbpsDelay{
+			throttleRateKbps: BLOCKED_BANDWIDTH_KBPS,
+			delayUs:          BLOCKED_LATENCY_US,
+		})
 		if err != nil {
 			return errors.WithStack(err)
 		}
